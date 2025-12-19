@@ -16,8 +16,18 @@ class UploadReq(BaseModel):
     package: dict
 
 @app.get("/")
-def health():
-    return {"ok": True, "service": "filedrop"}
+def info():
+    return {
+        "service": "File Drop (CSPC 352)",
+        "what_server_stores": ["encrypted file packages", "metadata", "public keys"],
+        "what_server_never_sees": ["plaintext files", "symmetric keys", "private keys"],
+        "crypto": {
+            "file_encryption": "AES-GCM",
+            "key_wrap": "RSA-OAEP",
+            "signature": "RSA-PSS (SHA-256)"
+        },
+        "docs": "/docs"
+    }
 
 @app.post("/register")
 def register(req: RegisterReq):
@@ -54,17 +64,3 @@ def download(file_id: str):
     if pkg is None:
         raise HTTPException(status_code=404, detail="no such file")
     return {"ok": True, "package": pkg}
-
-@app.get("/")
-def info():
-    return {
-        "service": "File Drop (CSPC 352)",
-        "what_server_stores": ["encrypted file packages", "metadata", "public keys"],
-        "what_server_never_sees": ["plaintext files", "symmetric keys", "private keys"],
-        "crypto": {
-            "file_encryption": "AES-GCM",
-            "key_wrap": "RSA-OAEP",
-            "signature": "RSA-PSS (SHA-256)"
-        },
-        "docs": "/docs"
-    }
