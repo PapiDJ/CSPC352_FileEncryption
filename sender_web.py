@@ -1,3 +1,6 @@
+import os
+import base64
+import uuid
 import requests
 from cryptographyfunc import (
     load_or_create_rsa_keypair,
@@ -6,24 +9,26 @@ from cryptographyfunc import (
     package_for_receiver,
 )
 
-BASE_URL = "https://cspc352-fileencryption-1.onrender.com"
+BASE_URL = "https://cspc352-fileencryption.onrender.com"
 
-def register_user(user_id: str, public_key_pem_bytes: bytes):
-    r = requests.post(f"{BASE_URL}/register", json={
-        "user_id": user_id,
-        "public_key_pem": public_key_pem_bytes.decode("utf-8"),
-    }, timeout=10)
-    r.raise_for_status()
+def register_user(user_id, public_key_pem):
+    requests.post(
+        f"{BASE_URL}/register",
+        json={
+            "user_id": user_id,
+            "public_key_pem": public_key_pem.decode("utf-8"),
+        },
+        timeout=10,
+    ).raise_for_status()
 
-def get_pubkey(user_id: str):
+def get_pubkey(user_id):
     r = requests.get(f"{BASE_URL}/pubkey/{user_id}", timeout=10)
-    if r.status_code == 404:
-        raise RuntimeError(f"User '{user_id}' not registered on server yet.")
     r.raise_for_status()
-    pem_str = r.json()["public_key_pem"]
-    return load_public_key_from_pem(pem_str.encode("utf-8"))
+    return load_public_key_from_pem(
+        r.json()["public_key_pem"].encode("utf-8")
+    )
 
-def upload_file(package: dict) -> str:
+def upload_file(package):
     r = requests.post(f"{BASE_URL}/upload", json={"package": package}, timeout=20)
     r.raise_for_status()
     return r.json()["file_id"]
@@ -31,35 +36,45 @@ def upload_file(package: dict) -> str:
 def main():
     sender_id = "alice"
     receiver_id = "bob"
-    file_path = "secret.txt"  # your plaintext file :contentReference[oaicite:4]{index=4}
+    file_path = "test.txt"
 
     sk_sender, pk_sender = load_or_create_rsa_keypair(sender_id)
-    pk_pem = public_key_to_pem(pk_sender)
+    register_user(sender_id, public_key_to_pem(pk_sender))
 
-    # 1) register alice public key
-    register_user(sender_id, pk_pem)
-
-    # 2) get bob's public key
     receiver_pub = get_pubkey(receiver_id)
 
-    # 3) read plaintext locally
     with open(file_path, "rb") as f:
         plaintext = f.read()
 
-    # 4) encrypt + sign locally (server never sees plaintext / private keys) :contentReference[oaicite:5]{index=5}
-    file_id = "file-1"
+    file_id = str(uuid.uuid4())
+
     package = package_for_receiver(
         plaintext,
-        sender_id=sender_id,
-        receiver_id=receiver_id,
-        file_id=file_id,
-        sender_private_key=sk_sender,
-        receiver_public_key=receiver_pub,
+        sender_id,
+        receiver_id,
+        file_id,
+        sk_sender,
+        receiver_pub,
     )
 
-    # 5) upload encrypted package
-    real_file_id = upload_file(package)
-    print("Uploaded file with id:", real_file_id)
+    package["original_name"] = os.path.basename(file_path)
+    package["plaintext_size"] = len(plaintext)
+
+    real_id = upload_file(package)
+
+    ciphertext_size = len(base64.b64decode(package["ciphertext_b64"]))
+
+    print("\n" + "="*60)
+    print("✓ FILE UPLOAD SUCCESSFUL")
+    print("="*60)
+    print(f"File ID: {real_id}")
+    print(f"From: {sender_id}")
+    print(f"To: {receiver_id}")
+    print(f"Filename: {package['original_name']}")
+    print(f"Size: {len(plaintext)} bytes")
+    print(f"Encrypted Size: {ciphertext_size} bytes")
+    print("Server Response: file uploaded successfully")
+    print("="*60 + "\n")
 
 if __name__ == "__main__":
     main()
